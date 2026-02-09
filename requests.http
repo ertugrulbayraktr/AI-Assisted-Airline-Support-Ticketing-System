@@ -1,0 +1,264 @@
+### ========================================
+### AIRLINE SUPPORT API - COMPLETE ENDPOINT COLLECTION
+### Swagger UI: http://localhost:5098/swagger
+### ========================================
+
+@baseUrl = http://localhost:5098/api
+
+# After login, copy token from response and paste below
+@agentToken = 
+@passengerToken = 
+@adminToken = 
+
+# After creating ticket, copy ticketId from response
+@ticketId = 
+
+# After creating policy (step 17), copy policyId from response
+@policyId = 
+
+### ========================================
+### AUTH ENDPOINTS
+### ========================================
+
+### 1. Agent Login
+# @name agentLogin
+POST {{baseUrl}}/auth/login
+Content-Type: application/json
+
+{
+  "email": "agent@airline.com",
+  "password": "Agent123!"
+}
+
+###
+
+### 2. Admin Login
+# @name adminLogin
+POST {{baseUrl}}/auth/login
+Content-Type: application/json
+
+{
+  "email": "admin@airline.com",
+  "password": "Admin123!"
+}
+
+###
+
+### 3. Passenger PNR Verification
+# @name passengerVerify
+POST {{baseUrl}}/auth/passenger/verify-pnr
+Content-Type: application/json
+
+{
+  "pnr": "ABC123",
+  "lastName": "Doe"
+}
+
+###
+
+### ========================================
+### PASSENGER ENDPOINTS (requires @passengerToken)
+### ========================================
+
+### 4. Create Ticket (Passenger - PNR Required)
+POST {{baseUrl}}/tickets
+Content-Type: application/json
+Authorization: Bearer {{passengerToken}}
+
+{
+  "subject": "Need help with flight cancellation",
+  "description": "I need to cancel my flight ABC123 due to medical emergency. Please advise on refund options.",
+  "category": 2,
+  "priority": 2,
+  "pnr": "ABC123",
+  "passengerLastName": "Doe"
+}
+
+###
+
+### 5. Get My Tickets (Passenger)
+GET {{baseUrl}}/tickets/mine?pageNumber=1&pageSize=10
+Authorization: Bearer {{passengerToken}}
+
+###
+
+### 6. Get Ticket Details
+GET {{baseUrl}}/tickets/{{ticketId}}
+Authorization: Bearer {{passengerToken}}
+
+###
+
+### 7. Add Message to Ticket (Passenger)
+POST {{baseUrl}}/tickets/{{ticketId}}/messages
+Content-Type: application/json
+Authorization: Bearer {{passengerToken}}
+
+{
+  "content": "I have uploaded the medical certificate as requested",
+  "isInternal": false
+}
+
+###
+
+### ========================================
+### AGENT ENDPOINTS (requires @agentToken)
+### ========================================
+
+### 8. Get Agent Queue (All Tickets)
+GET {{baseUrl}}/agent/queue?pageNumber=1&pageSize=20&sortBy=Priority&sortDescending=true
+Authorization: Bearer {{agentToken}}
+
+###
+
+### 9. Get Agent Queue (Filtered - High Priority Only)
+GET {{baseUrl}}/agent/queue?filterByPriority=2&filterBySlaRisk=true&pageNumber=1&pageSize=20
+Authorization: Bearer {{agentToken}}
+
+###
+
+### 10. Get My Assigned Tickets (Agent)
+GET {{baseUrl}}/agent/my-queue?pageNumber=1&pageSize=20
+Authorization: Bearer {{agentToken}}
+
+###
+
+### 11. Create Internal Ticket (Agent/Admin - PNR Optional)
+POST {{baseUrl}}/tickets/internal
+Content-Type: application/json
+Authorization: Bearer {{agentToken}}
+
+{
+  "subject": "Internal investigation - baggage complaint",
+  "description": "Customer reported missing baggage. Investigating with ground services.",
+  "category": 4,
+  "priority": 1,
+  "pnr": "XYZ789",
+  "passengerLastName": "Smith"
+}
+
+###
+
+### 12. Assign Ticket to Agent
+POST {{baseUrl}}/tickets/{{ticketId}}/assign
+Content-Type: application/json
+Authorization: Bearer {{agentToken}}
+
+{
+  "agentId": "PUT_AGENT_GUID_HERE"
+}
+
+###
+
+### 13. Transition Ticket State (Triaged -> Assigned)
+POST {{baseUrl}}/tickets/{{ticketId}}/transition
+Content-Type: application/json
+Authorization: Bearer {{agentToken}}
+
+{
+  "newState": 2
+}
+
+###
+
+### 14. Transition to InProgress
+POST {{baseUrl}}/tickets/{{ticketId}}/transition
+Content-Type: application/json
+Authorization: Bearer {{agentToken}}
+
+{
+  "newState": 3
+}
+
+###
+
+### 15. Transition to Resolved
+POST {{baseUrl}}/tickets/{{ticketId}}/transition
+Content-Type: application/json
+Authorization: Bearer {{agentToken}}
+
+{
+  "newState": 5
+}
+
+###
+
+### 16. Add Internal Note (Agent Only)
+POST {{baseUrl}}/tickets/{{ticketId}}/messages
+Content-Type: application/json
+Authorization: Bearer {{agentToken}}
+
+{
+  "content": "INTERNAL: Contacted ground services, baggage located at terminal 3",
+  "isInternal": true
+}
+
+###
+
+### ========================================
+### ADMIN/POLICY ENDPOINTS (requires @adminToken)
+### ========================================
+
+### 17. Create Policy Document (Admin)
+# @name createPolicy
+# 📝 Response will contain: { "policyId": "some-guid" }
+# Copy the policyId and paste it in @policyId variable at line 11
+POST {{baseUrl}}/policies
+Content-Type: application/json
+Authorization: Bearer {{adminToken}}
+
+{
+  "title": "Baggage Compensation Policy",
+  "content": "# Baggage Compensation Policy\n\n## Lost Baggage\n- $50 per day up to 5 days\n- Maximum compensation: $3000\n\n## Delayed Baggage\n- Essential items reimbursement up to $200\n- Submit receipts within 21 days"
+}
+
+###
+
+### 18. Publish Policy (Makes it searchable for AI Copilot)
+# ⚠️ BEFORE RUNNING THIS:
+#    Step 1: Run request #17 above to create a policy
+#    Step 2: Copy "policyId" from the JSON response
+#    Step 3: Scroll to top and paste in line 11: @policyId = <your-guid>
+#    Step 4: Now run this request
+#
+# 💡 TIP: Database already has a seeded policy. To get its ID:
+#    - SQL: SELECT Id FROM PolicyDocuments WHERE Title LIKE '%Cancellation%'
+#    - Or just create a new one with step #17
+POST {{baseUrl}}/policies/{{policyId}}/publish
+Authorization: Bearer {{adminToken}}
+
+###
+
+### ========================================
+### TICKET STATE REFERENCE
+### ========================================
+# 0 = New
+# 1 = Triaged
+# 2 = Assigned
+# 3 = InProgress
+# 4 = WaitingOnPassenger
+# 5 = Resolved
+# 6 = Closed
+# 7 = Cancelled
+
+### ========================================
+### CATEGORY REFERENCE
+### ========================================
+# 0 = General
+# 1 = Booking
+# 2 = Cancellation
+# 3 = Refund
+# 4 = Baggage
+# 5 = FlightDelay
+# 6 = FlightCancellation
+# 7 = SeatChange
+# 8 = SpecialAssistance
+# 9 = MealRequest
+# 10 = Other
+
+### ========================================
+### PRIORITY REFERENCE
+### ========================================
+# 0 = P3 (Low)
+# 1 = P2 (Normal)
+# 2 = P1 (High)
+# 3 = P0 (Critical)

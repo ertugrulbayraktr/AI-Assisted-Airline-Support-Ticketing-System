@@ -1,0 +1,46 @@
+[
+  {
+    "PNR": "ABC123",
+    "Passengers": [
+      { "FirstName": "John", "LastName": "Doe", "Email": "john.doe@example.com" }
+    ],
+    "Segments": [
+      {
+        "FlightNumber": "AA100",
+        "Departure": "JFK",
+        "Arrival": "LAX",
+        "DepartureTime": "2026-02-16T10:00:00Z",
+        "ArrivalTime": "2026-02-16T16:00:00Z"
+      }
+    ],
+    "FlightStatus": "on-time",
+    "BaggageStatus": "checked",
+    "FareRules": {
+      "IsRefundable": true,
+      "IsChangeable": true,
+      "CancellationFee": 50.00
+    }
+  },
+  {
+    "PNR": "XYZ789",
+    "Passengers": [
+      { "FirstName": "Jane", "LastName": "Smith", "Email": "jane.smith@example.com" }
+    ],
+    "Segments": [
+      {
+        "FlightNumber": "BA200",
+        "Departure": "LHR",
+        "Arrival": "CDG",
+        "DepartureTime": "2026-02-11T14:00:00Z",
+        "ArrivalTime": "2026-02-11T15:00:00Z"
+      }
+    ],
+    "FlightStatus": "delayed",
+    "BaggageStatus": "pending",
+    "FareRules": {
+      "IsRefundable": false,
+      "IsChangeable": true,
+      "CancellationFee": 100.00
+    }
+  }
+]
