@@ -1,7 +1,9 @@
+using FluentValidation;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
 using Microsoft.OpenApi.Models;
+using Support.Api.Filters;
 using Support.Application.Interfaces;
 using Support.Infrastructure.BackgroundServices;
 using Support.Infrastructure.Persistence;
@@ -27,8 +29,19 @@ builder.Services.AddScoped<IApplicationDbContext>(provider =>
 
 // Services
 builder.Services.AddScoped<IReservationProvider, MockReservationProvider>();
-builder.Services.AddScoped<IAiCopilotClient, MockAiCopilotClient>();
-builder.Services.AddScoped<IPolicySearchService, PolicySearchService>();
+
+// AI services: use Gemini if API key is configured, otherwise fall back to mock
+if (!string.IsNullOrEmpty(builder.Configuration["Gemini:ApiKey"]))
+{
+    builder.Services.AddScoped<IAiCopilotClient, GeminiCopilotClient>();
+    builder.Services.AddScoped<IPolicySearchService, GeminiEmbeddingPolicySearchService>();
+}
+else
+{
+    builder.Services.AddScoped<IAiCopilotClient, MockAiCopilotClient>();
+    builder.Services.AddScoped<IPolicySearchService, PolicySearchService>();
+}
+
 builder.Services.AddScoped<IJwtTokenService, JwtTokenService>();
 builder.Services.AddScoped<IPasswordHasher, PasswordHasher>();
 
@@ -51,12 +64,14 @@ builder.Services.AddScoped<Support.Application.Features.Tickets.Queries.GetAgent
 // Handlers - Policies (Admin)
 builder.Services.AddScoped<Support.Application.Features.Policies.Commands.CreatePolicy.CreatePolicyHandler>();
 builder.Services.AddScoped<Support.Application.Features.Policies.Commands.PublishPolicy.PublishPolicyHandler>();
+builder.Services.AddScoped<Support.Application.Features.Policies.Queries.GetPolicyById.GetPolicyByIdHandler>();
 
 // Background Services
 builder.Services.AddHostedService<SlaMonitorService>();
 
 // JWT Authentication
-var jwtSecret = builder.Configuration["Jwt:Secret"] ?? "YourSuperSecretKeyMinimum32CharactersLongForHS256Algorithm";
+var jwtSecret = builder.Configuration["Jwt:Secret"]
+    ?? throw new InvalidOperationException("JWT secret is not configured. Set 'Jwt:Secret' via user-secrets or environment variable.");
 builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
     .AddJwtBearer(options =>
     {
@@ -74,8 +89,15 @@ builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
 
 builder.Services.AddAuthorization();
 
+// Validation
+builder.Services.AddValidatorsFromAssemblyContaining<Support.Application.Features.Auth.Commands.Login.LoginCommandValidator>();
+builder.Services.AddScoped<ValidationFilter>();
+
 // Controllers
-builder.Services.AddControllers();
+builder.Services.AddControllers(options =>
+{
+    options.Filters.AddService<ValidationFilter>();
+});
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen(c =>
 {
@@ -120,6 +142,16 @@ if (app.Environment.IsDevelopment())
     app.UseSwagger();
     app.UseSwaggerUI();
 }
+
+app.UseExceptionHandler(errorApp =>
+{
+    errorApp.Run(async context =>
+    {
+        context.Response.StatusCode = StatusCodes.Status500InternalServerError;
+        context.Response.ContentType = "application/json";
+        await context.Response.WriteAsJsonAsync(new { error = "An unexpected error occurred." });
+    });
+});
 
 app.UseHttpsRedirection();
 app.UseAuthentication();

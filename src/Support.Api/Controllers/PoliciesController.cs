@@ -2,6 +2,7 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Support.Application.Features.Policies.Commands.CreatePolicy;
 using Support.Application.Features.Policies.Commands.PublishPolicy;
+using Support.Application.Features.Policies.Queries.GetPolicyById;
 using System.Security.Claims;
 
 namespace Support.Api.Controllers;
@@ -16,13 +17,16 @@ public class PoliciesController : ControllerBase
 {
     private readonly CreatePolicyHandler _createPolicyHandler;
     private readonly PublishPolicyHandler _publishPolicyHandler;
+    private readonly GetPolicyByIdHandler _getPolicyByIdHandler;
 
     public PoliciesController(
         CreatePolicyHandler createPolicyHandler,
-        PublishPolicyHandler publishPolicyHandler)
+        PublishPolicyHandler publishPolicyHandler,
+        GetPolicyByIdHandler getPolicyByIdHandler)
     {
         _createPolicyHandler = createPolicyHandler;
         _publishPolicyHandler = publishPolicyHandler;
+        _getPolicyByIdHandler = getPolicyByIdHandler;
     }
 
     /// <summary>
@@ -93,19 +97,24 @@ public class PoliciesController : ControllerBase
     }
 
     /// <summary>
-    /// Get policy by ID (placeholder - implement if needed)
+    /// Get policy by ID
     /// </summary>
     /// <param name="id">Policy ID</param>
     /// <returns>Policy details</returns>
     [HttpGet("{id}")]
-    [ProducesResponseType(StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(PolicyDetailDto), StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]
-    public IActionResult GetPolicy(Guid id)
+    public async Task<IActionResult> GetPolicy(Guid id)
     {
-        // Note: This is a placeholder for CreatedAtAction.
-        // Full implementation would require a GetPolicyByIdQuery in Application layer.
-        // For now, return a simple response indicating the policy was created.
-        return Ok(new { id, message = "Policy retrieval endpoint - implement GetPolicyByIdQuery if needed" });
+        var query = new GetPolicyByIdQuery { PolicyId = id };
+        var result = await _getPolicyByIdHandler.Handle(query, HttpContext.RequestAborted);
+
+        if (!result.IsSuccess)
+        {
+            return NotFound(new { error = result.ErrorMessage });
+        }
+
+        return Ok(result.Data);
     }
 
     private Guid GetUserId()

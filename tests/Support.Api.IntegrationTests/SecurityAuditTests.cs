@@ -1,11 +1,13 @@
 using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.InMemory;
+using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Support.Application.Interfaces;
 using Support.Domain.Entities;
 using Support.Domain.Enums;
 using Support.Infrastructure.Persistence;
+using Support.Infrastructure.Services;
 using System.Net;
 using System.Net.Http.Headers;
 using System.Net.Http.Json;
@@ -46,6 +48,7 @@ public class SecurityAuditTests : IClassFixture<WebApplicationFactory<Program>>,
         
         var webAppFactory = _factory.WithWebHostBuilder(builder =>
         {
+            builder.UseSetting("Jwt:Secret", "TestSecretKeyThatIsAtLeast32CharactersLongForHS256");
             builder.ConfigureServices(services =>
             {
                 // Remove existing DbContext registration
@@ -69,6 +72,15 @@ public class SecurityAuditTests : IClassFixture<WebApplicationFactory<Program>>,
                 });
                 
                 services.AddScoped<IApplicationDbContext>(sp => sp.GetRequiredService<ApplicationDbContext>());
+
+                // Use mock AI services for tests (no external API dependency)
+                var aiDescriptor = services.SingleOrDefault(d => d.ServiceType == typeof(IAiCopilotClient));
+                if (aiDescriptor != null) services.Remove(aiDescriptor);
+                services.AddScoped<IAiCopilotClient, MockAiCopilotClient>();
+
+                var searchDescriptor = services.SingleOrDefault(d => d.ServiceType == typeof(IPolicySearchService));
+                if (searchDescriptor != null) services.Remove(searchDescriptor);
+                services.AddScoped<IPolicySearchService, PolicySearchService>();
             });
         });
 
@@ -162,8 +174,8 @@ public class SecurityAuditTests : IClassFixture<WebApplicationFactory<Program>>,
         // Act: Send request with isInternal=true
         var response = await _client.PostAsJsonAsync($"/api/tickets/{_testTicketId}/messages", maliciousRequest);
 
-        // Assert: Request should succeed (200), but message should NOT be internal
-        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        // Assert: Request should succeed (201), but message should NOT be internal
+        Assert.Equal(HttpStatusCode.Created, response.StatusCode);
 
         // Verify in database: Message must be isInternal=false
         var message = await _context.TicketMessages
@@ -191,7 +203,7 @@ public class SecurityAuditTests : IClassFixture<WebApplicationFactory<Program>>,
         var response = await _client.PostAsJsonAsync($"/api/tickets/{_testTicketId}/messages", internalNote);
 
         // Assert: Request succeeds and message IS internal
-        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        Assert.Equal(HttpStatusCode.Created, response.StatusCode);
 
         var message = await _context.TicketMessages
             .OrderByDescending(m => m.CreatedAt)

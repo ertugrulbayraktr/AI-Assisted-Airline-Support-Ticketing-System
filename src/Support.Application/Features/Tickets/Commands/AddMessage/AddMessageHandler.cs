@@ -25,6 +25,11 @@ public class AddMessageHandler
             return Result<AddMessageResult>.Failure("Ticket not found");
         }
 
+        if (ticket.State == TicketState.Closed || ticket.State == TicketState.Cancelled)
+        {
+            return Result<AddMessageResult>.Failure($"Cannot add messages to a {ticket.State} ticket");
+        }
+
         // SECURITY: Verify user identity and enforce internal note permissions
         var user = await _context.Users.FindAsync(new object[] { request.UserId }, cancellationToken);
         
@@ -55,7 +60,9 @@ public class AddMessageHandler
             actorType,
             eventType,
             request.UserId,
-            details: $"Message added: {request.Content[..Math.Min(50, request.Content.Length)]}...");
+            details: request.Content.Length > 50
+                ? $"Message added: {request.Content[..50]}..."
+                : $"Message added: {request.Content}");
 
         _context.TicketAuditEvents.Add(auditEvent);
 

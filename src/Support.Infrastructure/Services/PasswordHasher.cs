@@ -1,6 +1,5 @@
 using Support.Application.Interfaces;
 using System.Security.Cryptography;
-using System.Text;
 
 namespace Support.Infrastructure.Services;
 
@@ -8,13 +7,11 @@ public class PasswordHasher : IPasswordHasher
 {
     private const int SaltSize = 16;
     private const int HashSize = 32;
-    private const int Iterations = 10000;
+    private const int Iterations = 600_000;
 
     public string HashPassword(string password)
     {
-        using var rng = RandomNumberGenerator.Create();
-        var salt = new byte[SaltSize];
-        rng.GetBytes(salt);
+        var salt = RandomNumberGenerator.GetBytes(SaltSize);
 
         using var pbkdf2 = new Rfc2898DeriveBytes(password, salt, Iterations, HashAlgorithmName.SHA256);
         var hash = pbkdf2.GetBytes(HashSize);
@@ -36,12 +33,8 @@ public class PasswordHasher : IPasswordHasher
         using var pbkdf2 = new Rfc2898DeriveBytes(password, salt, Iterations, HashAlgorithmName.SHA256);
         var testHash = pbkdf2.GetBytes(HashSize);
 
-        for (int i = 0; i < HashSize; i++)
-        {
-            if (hashBytes[i + SaltSize] != testHash[i])
-                return false;
-        }
-
-        return true;
+        return CryptographicOperations.FixedTimeEquals(
+            hashBytes.AsSpan(SaltSize, HashSize),
+            testHash.AsSpan());
     }
 }

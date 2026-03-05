@@ -29,22 +29,34 @@ public class PolicyDocument : BaseEntity
 
     public void Publish()
     {
-        if (Status == PolicyStatus.Draft)
+        if (Status != PolicyStatus.Draft)
         {
-            Status = PolicyStatus.Published;
-            PublishedAt = DateTime.UtcNow;
-            UpdateTimestamp();
+            throw new InvalidOperationException($"Only draft policies can be published. Current status: {Status}");
         }
+
+        Status = PolicyStatus.Published;
+        PublishedAt = DateTime.UtcNow;
+        UpdateTimestamp();
     }
 
     public void Archive()
     {
+        if (Status != PolicyStatus.Published)
+        {
+            throw new InvalidOperationException($"Only published policies can be archived. Current status: {Status}");
+        }
+
         Status = PolicyStatus.Archived;
         UpdateTimestamp();
     }
 
     public void UpdateContent(string newContent)
     {
+        if (Status != PolicyStatus.Draft)
+        {
+            throw new InvalidOperationException($"Only draft policies can be edited. Current status: {Status}");
+        }
+
         Content = newContent;
         Version++;
         UpdateTimestamp();

@@ -10,10 +10,12 @@ namespace Support.Application.Features.Policies.Commands.PublishPolicy;
 public class PublishPolicyHandler
 {
     private readonly IApplicationDbContext _context;
+    private readonly IPolicySearchService _policySearchService;
 
-    public PublishPolicyHandler(IApplicationDbContext context)
+    public PublishPolicyHandler(IApplicationDbContext context, IPolicySearchService policySearchService)
     {
         _context = context;
+        _policySearchService = policySearchService;
     }
 
     public async Task<Result> Handle(PublishPolicyCommand request, CancellationToken cancellationToken)
@@ -25,6 +27,11 @@ public class PublishPolicyHandler
         if (policy == null)
         {
             return Result.Failure("Policy not found");
+        }
+
+        if (policy.Status != Domain.Enums.PolicyStatus.Draft)
+        {
+            return Result.Failure($"Only draft policies can be published. Current status: {policy.Status}");
         }
 
         policy.Publish();
@@ -49,6 +56,8 @@ public class PublishPolicyHandler
         _context.TicketAuditEvents.Add(auditEvent);
 
         await _context.SaveChangesAsync(cancellationToken);
+
+        await _policySearchService.ReindexPolicyAsync(policy.Id, cancellationToken);
 
         return Result.Success();
     }

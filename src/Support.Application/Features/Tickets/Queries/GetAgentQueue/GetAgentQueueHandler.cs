@@ -15,7 +15,7 @@ public class GetAgentQueueHandler
 
     public async Task<Result<GetAgentQueueResult>> Handle(GetAgentQueueQuery request, CancellationToken cancellationToken)
     {
-        var query = _context.Tickets.AsQueryable();
+        var query = _context.Tickets.AsNoTracking().AsQueryable();
 
         if (request.FilterByState.HasValue)
             query = query.Where(t => t.State == request.FilterByState.Value);
@@ -75,7 +75,7 @@ public class GetAgentQueueHandler
             .Distinct()
             .ToList();
 
-        var agents = await _context.Users
+        var agents = await _context.Users.AsNoTracking()
             .Where(u => agentIds.Contains(u.Id))
             .ToDictionaryAsync(u => u.Id, u => u.FullName, cancellationToken);
 

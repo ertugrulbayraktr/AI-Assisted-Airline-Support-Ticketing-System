@@ -75,12 +75,12 @@ public class Ticket : BaseEntity
 
         State = newState;
         
-        if (newState == TicketState.Resolved && !ResolvedAt.HasValue)
+        if (newState == TicketState.Resolved)
         {
             ResolvedAt = DateTime.UtcNow;
         }
         
-        if (newState == TicketState.Closed && !ClosedAt.HasValue)
+        if (newState == TicketState.Closed)
         {
             ClosedAt = DateTime.UtcNow;
         }
@@ -91,12 +91,17 @@ public class Ticket : BaseEntity
 
     public void Assign(Guid agentId)
     {
+        if (State == TicketState.Closed || State == TicketState.Cancelled)
+        {
+            throw new InvalidOperationException($"Cannot assign agent to a {State} ticket");
+        }
+
         AssignedToAgentId = agentId;
         
-        // Auto-transition to Assigned from New or Triaged state
         if (State == TicketState.New || State == TicketState.Triaged)
         {
             Transition(TicketState.Assigned);
+            return;
         }
         
         UpdateTimestamp();

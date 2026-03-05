@@ -27,7 +27,9 @@ public class GetTicketByIdHandler
 
         // Check access (passenger can only view own tickets)
         var requestingUser = await _context.Users.FindAsync(new object[] { request.RequestingUserId }, cancellationToken);
-        if (requestingUser?.Role == Role.Passenger && ticket.CreatedByUserId != request.RequestingUserId)
+        
+        var isPassenger = requestingUser == null || requestingUser.Role == Role.Passenger;
+        if (isPassenger && ticket.CreatedByUserId != request.RequestingUserId)
         {
             return Result<TicketDetailDto>.Failure("Access denied");
         }
@@ -39,7 +41,7 @@ public class GetTicketByIdHandler
             .ToDictionaryAsync(u => u.Id, u => u.FullName, cancellationToken);
 
         var messages = ticket.Messages
-            .Where(m => requestingUser?.Role != Role.Passenger || !m.IsInternal) // Hide internal notes from passengers
+            .Where(m => !isPassenger || !m.IsInternal)
             .OrderBy(m => m.CreatedAt)
             .Select(m => new TicketMessageDto
             {

@@ -34,6 +34,7 @@ public class JwtTokenService : IJwtTokenService
     {
         var claims = new List<Claim>
         {
+            new Claim(ClaimTypes.NameIdentifier, $"pnr:{pnr}"),
             new Claim("pnr", pnr),
             new Claim("lastName", lastName),
             new Claim(ClaimTypes.Email, email),
@@ -45,8 +46,9 @@ public class JwtTokenService : IJwtTokenService
 
     private string GenerateJwt(List<Claim> claims)
     {
-        var key = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(
-            _configuration["Jwt:Secret"] ?? "YourSuperSecretKeyMinimum32CharactersLongForHS256Algorithm"));
+        var secret = _configuration["Jwt:Secret"]
+            ?? throw new InvalidOperationException("JWT secret is not configured. Set 'Jwt:Secret' in configuration.");
+        var key = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(secret));
 
         var credentials = new SigningCredentials(key, SecurityAlgorithms.HmacSha256);
 

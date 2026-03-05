@@ -15,7 +15,7 @@ public class GetMyTicketsHandler
 
     public async Task<Result<GetMyTicketsResult>> Handle(GetMyTicketsQuery request, CancellationToken cancellationToken)
     {
-        var query = _context.Tickets
+        var query = _context.Tickets.AsNoTracking()
             .Where(t => t.CreatedByUserId == request.UserId);
 
         if (request.FilterByState.HasValue)

@@ -73,7 +73,11 @@ public class TicketsController : ControllerBase
         command.TicketId = id;
         command.UserId = GetUserId();
         var result = await _addMessageHandler.Handle(command, HttpContext.RequestAborted);
-        return result.IsSuccess ? Ok(result.Data) : BadRequest(new { error = result.ErrorMessage });
+        
+        if (!result.IsSuccess)
+            return BadRequest(new { error = result.ErrorMessage });
+
+        return CreatedAtAction(nameof(GetTicket), new { id }, result.Data);
     }
 
     // ===== AGENT/ADMIN OPERATIONS =====

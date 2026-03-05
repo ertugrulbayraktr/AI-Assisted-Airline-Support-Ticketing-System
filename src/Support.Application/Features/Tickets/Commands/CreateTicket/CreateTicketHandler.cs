@@ -10,41 +10,48 @@ public class CreateTicketHandler
 {
     private readonly IApplicationDbContext _context;
     private readonly IReservationProvider _reservationProvider;
+    private readonly IAiCopilotClient _aiCopilot;
 
-    public CreateTicketHandler(IApplicationDbContext context, IReservationProvider reservationProvider)
+    public CreateTicketHandler(
+        IApplicationDbContext context,
+        IReservationProvider reservationProvider,
+        IAiCopilotClient aiCopilot)
     {
         _context = context;
         _reservationProvider = reservationProvider;
+        _aiCopilot = aiCopilot;
     }
 
     public async Task<Result<CreateTicketResult>> Handle(CreateTicketCommand request, CancellationToken cancellationToken)
     {
-        // Verify PNR
-        var isValid = await _reservationProvider.VerifyPnrAsync(request.PNR, request.PassengerLastName, cancellationToken);
-        if (!isValid)
+        var reservation = await _reservationProvider.GetReservationAsync(request.PNR, request.PassengerLastName, cancellationToken);
+        if (reservation == null)
         {
             return Result<CreateTicketResult>.Failure("Invalid PNR or passenger last name");
         }
 
-        // Create ticket
+        var draft = await _aiCopilot.DraftTicketCreateAsync(
+            $"{request.Subject} {request.Description}",
+            reservation,
+            cancellationToken);
+
         var ticket = new Ticket(
             request.Subject,
             request.Description,
-            request.Category,
-            request.Priority,
+            draft.CategorySuggested,
+            draft.PrioritySuggested,
             request.UserId,
             request.PNR,
             request.PassengerLastName);
 
         _context.Tickets.Add(ticket);
 
-        // Add audit event
         var auditEvent = new TicketAuditEvent(
             ticket.Id,
             ActorType.Passenger,
             AuditEventType.Created,
             request.UserId,
-            details: $"Ticket created by passenger with PNR {request.PNR}");
+            details: $"Ticket created by passenger with PNR {request.PNR}. AI suggested category: {draft.CategorySuggested}, priority: {draft.PrioritySuggested}");
 
         _context.TicketAuditEvents.Add(auditEvent);
 
@@ -53,7 +60,10 @@ public class CreateTicketHandler
         return Result<CreateTicketResult>.Success(new CreateTicketResult
         {
             TicketId = ticket.Id,
-            TicketNumber = ticket.TicketNumber
+            TicketNumber = ticket.TicketNumber,
+            AiSummary = draft.Summary,
+            SuggestedCategory = draft.CategorySuggested,
+            SuggestedPriority = draft.PrioritySuggested
         });
     }
 }

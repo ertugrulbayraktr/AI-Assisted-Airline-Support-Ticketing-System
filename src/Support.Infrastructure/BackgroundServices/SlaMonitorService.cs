@@ -30,13 +30,16 @@ public class SlaMonitorService : BackgroundService
             {
                 await CheckAndEscalateTickets(stoppingToken);
                 await AutoCloseResolvedTickets(stoppingToken);
+                await Task.Delay(_checkInterval, stoppingToken);
+            }
+            catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
+            {
+                break;
             }
             catch (Exception ex)
             {
                 _logger.LogError(ex, "Error in SLA Monitor Service");
             }
-
-            await Task.Delay(_checkInterval, stoppingToken);
         }
 
         _logger.LogInformation("SLA Monitor Service stopped");
@@ -57,68 +60,72 @@ public class SlaMonitorService : BackgroundService
                 (t.ResolvedAt == null && t.State != TicketState.Closed && t.State != TicketState.Cancelled && t.ResolutionDueAt < now))
             .ToListAsync(cancellationToken);
 
+        var processedCount = 0;
+
         foreach (var ticket in breachedTickets)
         {
-            var breachType = ticket.FirstResponseAt == null ? "FirstResponse" : "Resolution";
+            var breachTypes = new List<string>();
 
-            // IDEMPOTENCY CHECK: Has this breach already been recorded?
-            var alreadyBreached = ticket.AuditEvents.Any(e => 
-                e.EventType == AuditEventType.SlaBreached && 
-                e.Details != null &&
-                e.Details.Contains(breachType));
+            if (ticket.FirstResponseAt == null && ticket.FirstResponseDueAt < now)
+                breachTypes.Add("FirstResponse");
+            if (ticket.ResolvedAt == null && ticket.State != TicketState.Closed && ticket.State != TicketState.Cancelled && ticket.ResolutionDueAt < now)
+                breachTypes.Add("Resolution");
 
-            if (alreadyBreached)
+            foreach (var breachType in breachTypes)
             {
-                // Already processed this breach type for this ticket - skip
-                continue;
-            }
+                var alreadyBreached = ticket.AuditEvents.Any(e => 
+                    e.EventType == AuditEventType.SlaBreached && 
+                    e.Details != null &&
+                    e.Details.Contains(breachType));
 
-            _logger.LogWarning("SLA breach detected for ticket {TicketNumber}: {BreachType}", 
-                ticket.TicketNumber, breachType);
+                if (alreadyBreached)
+                    continue;
 
-            // Escalate priority (only once per breach)
-            if (ticket.Priority < Priority.P0)
-            {
-                ticket.Escalate();
+                _logger.LogWarning("SLA breach detected for ticket {TicketNumber}: {BreachType}", 
+                    ticket.TicketNumber, breachType);
 
-                var escalationEvent = new TicketAuditEvent(
-                    ticket.Id,
-                    ActorType.System,
-                    AuditEventType.Escalated,
-                    details: $"Ticket escalated due to {breachType} SLA breach. Priority increased to {ticket.Priority}");
-
-                context.TicketAuditEvents.Add(escalationEvent);
-
-                // Create notification
-                if (ticket.AssignedToAgentId.HasValue)
+                if (ticket.Priority < Priority.P0)
                 {
-                    var notification = new Notification(
-                        ticket.AssignedToAgentId.Value,
-                        "SLA Breach Alert",
-                        $"Ticket {ticket.TicketNumber} has breached {breachType} SLA and has been escalated to {ticket.Priority}",
-                        ticket.Id);
+                    ticket.Escalate();
 
-                    context.Notifications.Add(notification);
+                    var escalationEvent = new TicketAuditEvent(
+                        ticket.Id,
+                        ActorType.System,
+                        AuditEventType.Escalated,
+                        details: $"Ticket escalated due to {breachType} SLA breach. Priority increased to {ticket.Priority}");
+
+                    context.TicketAuditEvents.Add(escalationEvent);
+
+                    if (ticket.AssignedToAgentId.HasValue)
+                    {
+                        var notification = new Notification(
+                            ticket.AssignedToAgentId.Value,
+                            "SLA Breach Alert",
+                            $"Ticket {ticket.TicketNumber} has breached {breachType} SLA and has been escalated to {ticket.Priority}",
+                            ticket.Id);
+
+                        context.Notifications.Add(notification);
+                    }
+
+                    _logger.LogInformation("Ticket {TicketNumber} escalated to priority {NewPriority}",
+                        ticket.TicketNumber, ticket.Priority);
                 }
 
-                _logger.LogInformation("Ticket {TicketNumber} escalated to priority {NewPriority}",
-                    ticket.TicketNumber, ticket.Priority);
+                var slaBreachEvent = new TicketAuditEvent(
+                    ticket.Id,
+                    ActorType.System,
+                    AuditEventType.SlaBreached,
+                    details: $"{breachType} SLA breached at {now:yyyy-MM-dd HH:mm:ss} UTC");
+
+                context.TicketAuditEvents.Add(slaBreachEvent);
+                processedCount++;
             }
-
-            // Mark SLA breach event (ONCE per breach type)
-            var slaBreachEvent = new TicketAuditEvent(
-                ticket.Id,
-                ActorType.System,
-                AuditEventType.SlaBreached,
-                details: $"{breachType} SLA breached at {now:yyyy-MM-dd HH:mm:ss} UTC");
-
-            context.TicketAuditEvents.Add(slaBreachEvent);
         }
 
-        if (breachedTickets.Any())
+        if (processedCount > 0)
         {
             await context.SaveChangesAsync(cancellationToken);
-            _logger.LogInformation("Processed {Count} SLA breaches", breachedTickets.Count);
+            _logger.LogInformation("Processed {Count} SLA breaches", processedCount);
         }
     }
 

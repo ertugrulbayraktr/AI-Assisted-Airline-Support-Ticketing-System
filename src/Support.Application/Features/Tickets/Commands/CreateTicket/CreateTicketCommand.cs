@@ -19,4 +19,7 @@ public class CreateTicketResult
 {
     public Guid TicketId { get; set; }
     public string TicketNumber { get; set; } = null!;
+    public string? AiSummary { get; set; }
+    public Domain.Enums.TicketCategory? SuggestedCategory { get; set; }
+    public Domain.Enums.Priority? SuggestedPriority { get; set; }
 }
